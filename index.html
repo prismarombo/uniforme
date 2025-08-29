@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Detector de Uniforme</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+  <style>
+    body { text-align: center; font-family: Arial, sans-serif; background: #f4f4f4; }
+    h1 { margin-top: 20px; }
+    video { border: 2px solid #333; border-radius: 10px; margin-top: 10px; }
+    #status { margin-top: 20px; font-size: 20px; font-weight: bold; }
+    #snapshot { margin-top: 20px; border: 2px solid #333; border-radius: 10px; max-width: 320px; }
+  </style>
+</head>
+<body>
+  <h1>Detector de Uniforme</h1>
+  <button onclick="init()">Iniciar cámara y modelo</button>
+  <br><br>
+  <video id="video" autoplay playsinline></video>
+  <div id="status">Esperando iniciar...</div>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <h3>Pantallazo guardado:</h3>
+  <img id="snapshot" alt="Aquí aparecerá la foto" />
+
+  <script>
+    let model, maxPredictions;
+    let snapshotTaken = false;
+
+    async function init() {
+      const modelURL = "my_model/model.json";
+      const metadataURL = "my_model/metadata.json";
+
+      try {
+        model = await tmImage.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
+
+        const video = document.getElementById("video");
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+
+        video.addEventListener("loadeddata", () => {
+          // Ajustar canvas al tamaño real del video
+          const canvas = document.getElementById("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+
+          snapshotTaken = false;
+          loop();
+        });
+
+        document.getElementById("status").innerText = "Cámara activa, analizando...";
+      } catch (error) {
+        console.error("Error iniciando modelo o cámara:", error);
+      }
+    }
+
+    async function loop() {
+      await predict();
+      requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+      const video = document.getElementById("video");
+      const prediction = await model.predict(video);
+
+      let bestClass = prediction[0].className;
+      let bestProb = prediction[0].probability;
+      for (let i = 1; i < maxPredictions; i++) {
+        if (prediction[i].probability > bestProb) {
+          bestClass = prediction[i].className;
+          bestProb = prediction[i].probability;
+        }
+      }
+
+      const statusEl = document.getElementById("status");
+
+      if (bestClass === "prendas que no son del unifrome") {
+        statusEl.innerText = "⚠️ Uniforme mal puesto";
+        snapshotTaken = false;
+      } else if (bestClass === "sudadera" || bestClass === "jardinera") {
+        statusEl.innerText = "✅ Uniforme bien puesto";
+        if (!snapshotTaken) {
+          takeSnapshot();
+          snapshotTaken = true;
+        }
+      } else if (bestClass === "esperando niña") {
+        statusEl.innerText = "⏳ Esperando estudiante";
+        snapshotTaken = false;
+      } else {
+        statusEl.innerText = "Analizando...";
+      }
+    }
+
+    function takeSnapshot() {
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const dataURL = canvas.toDataURL("image/png");
+      document.getElementById("snapshot").src = dataURL;
+    }
+  </script>
+</body>
+</html>
